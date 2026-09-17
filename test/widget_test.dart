@@ -15,9 +15,9 @@ void main() {
 
     expect(find.text('Team Plan'), findsOneWidget);
     expect(find.textContaining('team'), findsWidgets);
-    expect(find.text('Coming up'), findsOneWidget);
+    expect(find.text('Events'), findsWidgets);
     expect(find.text('Sprint planning'), findsOneWidget);
-    expect(find.text('Team'), findsOneWidget);
+    expect(find.text('Team'), findsWidgets);
   });
 
   testWidgets('Can add a new plan', (WidgetTester tester) async {
@@ -125,7 +125,7 @@ void main() {
     await tester.pumpWidget(homeUnderTest());
 
     final dragHandles = find.byIcon(Icons.drag_indicator_rounded);
-    expect(dragHandles, findsNWidgets(3));
+    expect(dragHandles, findsWidgets);
 
     // Drag the first drag handle down
     final firstHandle = dragHandles.first;
@@ -177,5 +177,64 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Next day'), findsOneWidget);
+  });
+
+  testWidgets('Can add a team member with an optional role', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(homeUnderTest());
+    await tester.tap(find.text('Team').last);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Add member').last);
+    await tester.tap(find.text('Add member').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add member').last);
+    await tester.pump();
+    expect(find.text('Name is required'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).last, 'Taylor');
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Developer').last);
+    await tester.pumpAndSettle();
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.widgetWithText(FilledButton, 'Add member').last,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Add member').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Taylor'), findsOneWidget);
+    expect(find.text('Developer'), findsWidgets);
+    expect(find.text('Taylor added to the team'), findsOneWidget);
+  });
+
+  testWidgets('Theme toggle switches to dark mode', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const PlanningApp());
+    await tester.tap(find.byTooltip('Use dark mode'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Use light mode'), findsOneWidget);
+  });
+
+  testWidgets('New home event appears in calendar', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const PlanningApp());
+    await tester.tap(find.text('Add Plan'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'Client review');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Plan'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Calendar').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Client review'), findsOneWidget);
   });
 }

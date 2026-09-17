@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
 
+import 'home_page.dart';
+
 enum PlannerView { daily, weekly }
 
 typedef PlannerEvent = ({
   String title,
   String time,
+  String? host,
   int hour,
   int day,
   Color color,
 });
 
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({super.key});
+  const CalendarPage({
+    super.key,
+    this.plans = const [],
+    this.members = const [],
+    this.isDark = false,
+    this.onThemeToggle,
+  });
+  final List<Plan> plans;
+  final List<TeamMember> members;
+  final bool isDark;
+  final VoidCallback? onThemeToggle;
   @override
   State<CalendarPage> createState() => _CalendarPageState();
 }
@@ -19,28 +32,21 @@ class CalendarPage extends StatefulWidget {
 class _CalendarPageState extends State<CalendarPage> {
   PlannerView _view = PlannerView.daily;
   late DateTime _date;
-  static const events = <PlannerEvent>[
-    (
-      title: 'Sprint planning',
-      time: '10:00 AM',
-      hour: 10,
-      day: 0,
-      color: Color(0xFF1F6F5B),
-    ),
-    (
-      title: 'Design review',
-      time: '2:00 PM',
-      hour: 14,
-      day: 1,
-      color: Color(0xFF3D5A80),
-    ),
-    (
-      title: 'Weekly standup',
-      time: '9:00 AM',
-      hour: 9,
-      day: 2,
-      color: Color(0xFFB5651D),
-    ),
+  List<PlannerEvent> get events => [
+    for (var index = 0; index < widget.plans.length; index++)
+      (
+        title: widget.plans[index].title,
+        time: widget.plans[index].time,
+        host: _memberName(widget.plans[index].hostId),
+        hour: _parseHour(widget.plans[index].time),
+        day: _parseDay(widget.plans[index].time, _date.weekday - 1),
+        color: const [
+          Color(0xFF1F6F5B),
+          Color(0xFF3D5A80),
+          Color(0xFFB5651D),
+          Color(0xFF6B4C9A),
+        ][index % 4],
+      ),
   ];
 
   @override
@@ -52,6 +58,14 @@ class _CalendarPageState extends State<CalendarPage> {
 
   DateTime get _weekStart => _date.subtract(Duration(days: _date.weekday - 1));
 
+  String? _memberName(String? id) {
+    if (id == null) return null;
+    for (final member in widget.members) {
+      if (member.id == id) return member.name;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) => SafeArea(
     child: Center(
@@ -62,6 +76,8 @@ class _CalendarPageState extends State<CalendarPage> {
           children: [
             _Header(
               date: _date,
+              isDark: widget.isDark,
+              onThemeToggle: widget.onThemeToggle,
               onToday: () => setState(() => _date = _onlyDate(DateTime.now())),
             ),
             const SizedBox(height: 22),
@@ -69,8 +85,10 @@ class _CalendarPageState extends State<CalendarPage> {
               style: SegmentedButton.styleFrom(
                 selectedBackgroundColor: const Color(0xFF1F6F5B),
                 selectedForegroundColor: Colors.white,
-                foregroundColor: const Color(0xFF53635C),
-                side: const BorderSide(color: Color(0xFFD8DED9)),
+                foregroundColor: Theme.of(context).colorScheme.onSurface,
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
               segments: const [
                 ButtonSegment(
@@ -125,9 +143,16 @@ class _CalendarPageState extends State<CalendarPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.date, required this.onToday});
+  const _Header({
+    required this.date,
+    required this.onToday,
+    required this.isDark,
+    this.onThemeToggle,
+  });
   final DateTime date;
   final VoidCallback onToday;
+  final bool isDark;
+  final VoidCallback? onThemeToggle;
   @override
   Widget build(BuildContext context) => Row(
     children: [
@@ -143,7 +168,9 @@ class _Header extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               '${_month(date.month)} ${date.year}',
-              style: const TextStyle(color: Color(0xFF5C6B64)),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -152,6 +179,12 @@ class _Header extends StatelessWidget {
         onPressed: onToday,
         icon: const Icon(Icons.today_rounded),
         label: const Text('Today'),
+      ),
+      const SizedBox(width: 8),
+      IconButton.filledTonal(
+        onPressed: onThemeToggle,
+        tooltip: isDark ? 'Use light mode' : 'Use dark mode',
+        icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
       ),
     ],
   );
@@ -195,7 +228,7 @@ class _DailySchedule extends StatelessWidget {
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-          decoration: _panelDecoration,
+          decoration: _panelDecoration(context),
           child: Column(
             children: [
               for (var hour = 8; hour <= 17; hour++)
@@ -272,7 +305,7 @@ class _WeeklySchedule extends StatelessWidget {
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: _panelDecoration,
+          decoration: _panelDecoration(context),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -312,7 +345,7 @@ class _DateNavigator extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     decoration: BoxDecoration(
-      color: const Color(0xFFFFFDF8),
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: const Color(0xFFE5E1D8)),
     ),
@@ -378,7 +411,9 @@ class _DayButton extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Material(
-    color: selected ? const Color(0xFF1F6F5B) : const Color(0xFFFFFDF8),
+    color: selected
+        ? const Color(0xFF1F6F5B)
+        : Theme.of(context).colorScheme.surface,
     borderRadius: BorderRadius.circular(14),
     child: InkWell(
       onTap: onTap,
@@ -400,7 +435,9 @@ class _DayButton extends StatelessWidget {
               '${date.day}',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: selected ? Colors.white : const Color(0xFF1C2B24),
+                color: selected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ],
@@ -453,7 +490,7 @@ class _WeekDay extends StatelessWidget {
                     : const Color(0xFFF0EEE8),
                 foregroundColor: _isToday(date)
                     ? Colors.white
-                    : const Color(0xFF1C2B24),
+                    : Theme.of(context).colorScheme.onSurface,
                 child: Text('${date.day}'),
               ),
               const SizedBox(height: 12),
@@ -486,7 +523,7 @@ class _Banner extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: const Color(0xFFE2EEE9),
+      color: Theme.of(context).colorScheme.primaryContainer,
       borderRadius: BorderRadius.circular(18),
     ),
     child: Row(
@@ -507,9 +544,21 @@ class _Banner extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(color: Color(0xFF5C6B64))),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimaryContainer
+                      .withValues(alpha: .75),
+                ),
+              ),
             ],
           ),
         ),
@@ -547,15 +596,28 @@ class _EventCard extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           event.time,
-          style: const TextStyle(fontSize: 11, color: Color(0xFF66736D)),
+          style: TextStyle(
+            fontSize: 11,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
+        if (event.host != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            'Host: ${event.host}',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ],
       ],
     ),
   );
 }
 
-final _panelDecoration = BoxDecoration(
-  color: const Color(0xFFFFFDF8),
+BoxDecoration _panelDecoration(BuildContext context) => BoxDecoration(
+  color: Theme.of(context).colorScheme.surface,
   borderRadius: BorderRadius.circular(20),
   border: Border.all(color: const Color(0xFFE5E1D8)),
   boxShadow: const [
@@ -591,3 +653,35 @@ String _month(int month) => const [
   'November',
   'December',
 ][month - 1];
+
+int _parseDay(String value, int fallback) {
+  final lower = value.toLowerCase();
+  if (lower.contains('today')) return fallback;
+  if (lower.contains('tomorrow')) return (fallback + 1) % 7;
+  const days = [
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday',
+  ];
+  for (var index = 0; index < days.length; index++) {
+    if (lower.contains(days[index])) return index;
+  }
+  return fallback;
+}
+
+int _parseHour(String value) {
+  final match = RegExp(
+    r'(\d{1,2})(?::\d{2})?\s*(AM|PM)',
+    caseSensitive: false,
+  ).firstMatch(value);
+  if (match == null) return 9;
+  var hour = int.parse(match.group(1)!);
+  final period = match.group(2)!.toUpperCase();
+  if (period == 'PM' && hour != 12) hour += 12;
+  if (period == 'AM' && hour == 12) hour = 0;
+  return hour;
+}
