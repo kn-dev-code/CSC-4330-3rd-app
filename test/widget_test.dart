@@ -2,11 +2,16 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:planning_app/home_page.dart';
 import 'package:planning_app/main.dart';
 
+Widget homeUnderTest() => const MaterialApp(home: HomePage());
+
 void main() {
-  testWidgets('Homepage shows team planning content', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+  testWidgets('Homepage shows team planning content', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(homeUnderTest());
 
     expect(find.text('Team Plan'), findsOneWidget);
     expect(find.textContaining('team'), findsWidgets);
@@ -16,7 +21,7 @@ void main() {
   });
 
   testWidgets('Can add a new plan', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+    await tester.pumpWidget(homeUnderTest());
 
     // Tap on FloatingActionButton or Add Plan button
     await tester.tap(find.text('Add Plan'));
@@ -45,7 +50,7 @@ void main() {
   });
 
   testWidgets('Can remove a plan', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+    await tester.pumpWidget(homeUnderTest());
 
     expect(find.text('Sprint planning'), findsOneWidget);
 
@@ -66,8 +71,10 @@ void main() {
     expect(find.text('Sprint planning'), findsOneWidget);
   });
 
-  testWidgets('Clicking tasks chip opens checklist with animations', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+  testWidgets('Clicking tasks chip opens checklist with animations', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(homeUnderTest());
 
     // Hovering alone does NOT toggle checklist
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -85,8 +92,10 @@ void main() {
     expect(find.text('Sprint backlog'), findsOneWidget);
   });
 
-  testWidgets('Checking off all tasks finishes the plan', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+  testWidgets('Checking off all tasks finishes the plan', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(homeUnderTest());
 
     // Tap on tasks chip on Sprint planning (0/3 tasks) to open checklist
     await tester.tap(find.text('0/3 tasks'));
@@ -113,7 +122,7 @@ void main() {
   });
 
   testWidgets('Can drag and reorder plans', (WidgetTester tester) async {
-    await tester.pumpWidget(const PlanningApp());
+    await tester.pumpWidget(homeUnderTest());
 
     final dragHandles = find.byIcon(Icons.drag_indicator_rounded);
     expect(dragHandles, findsNWidgets(3));
@@ -132,5 +141,41 @@ void main() {
     // Verify plans are still rendered properly
     expect(find.text('Sprint planning'), findsOneWidget);
     expect(find.text('Design review'), findsOneWidget);
+  });
+
+  testWidgets('Calendar tab offers daily and weekly views', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const PlanningApp());
+    await tester.tap(find.text('Calendar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Daily'), findsOneWidget);
+    expect(find.text('Your schedule at a glance'), findsOneWidget);
+
+    await tester.tap(find.text('Weekly'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('This week'), findsOneWidget);
+    expect(find.text('3 upcoming events'), findsOneWidget);
+  });
+
+  testWidgets('Calendar navigates days and drills down from week', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const PlanningApp());
+    await tester.tap(find.text('Calendar'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Next day'), findsOneWidget);
+    await tester.tap(find.byTooltip('Next day'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Weekly'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MON').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Next day'), findsOneWidget);
   });
 }
