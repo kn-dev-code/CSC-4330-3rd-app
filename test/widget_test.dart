@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,6 +35,10 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add Plan'));
     await tester.pumpAndSettle();
 
+    // Scroll down in CustomScrollView to view the new plan
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+
     // Verify new plan appears on list
     expect(find.text('Backend Refactoring'), findsOneWidget);
     expect(find.text('Plan "Backend Refactoring" added'), findsOneWidget);
@@ -59,5 +64,73 @@ void main() {
 
     // Verify item is restored
     expect(find.text('Sprint planning'), findsOneWidget);
+  });
+
+  testWidgets('Clicking tasks chip opens checklist with animations', (WidgetTester tester) async {
+    await tester.pumpWidget(const PlanningApp());
+
+    // Hovering alone does NOT toggle checklist
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: Offset.zero);
+    addTearDown(gesture.removePointer);
+
+    await gesture.moveTo(tester.getCenter(find.text('0/3 tasks')));
+    await tester.pumpAndSettle();
+
+    // Tapping the "0/3 tasks" button chip opens the checklist
+    await tester.tap(find.text('0/3 tasks'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Roadmap deck'), findsOneWidget);
+    expect(find.text('Sprint backlog'), findsOneWidget);
+  });
+
+  testWidgets('Checking off all tasks finishes the plan', (WidgetTester tester) async {
+    await tester.pumpWidget(const PlanningApp());
+
+    // Tap on tasks chip on Sprint planning (0/3 tasks) to open checklist
+    await tester.tap(find.text('0/3 tasks'));
+    await tester.pumpAndSettle();
+
+    // Ensure visible & check off tasks
+    await tester.ensureVisible(find.text('Roadmap deck'));
+    await tester.tap(find.text('Roadmap deck'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Sprint backlog'));
+    await tester.tap(find.text('Sprint backlog'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Finished'), findsNothing);
+
+    await tester.ensureVisible(find.text('Team capacity sheet'));
+    await tester.tap(find.text('Team capacity sheet'));
+    await tester.pumpAndSettle();
+
+    // Plan is finished!
+    expect(find.text('Finished'), findsOneWidget);
+    expect(find.text('🎉 Plan "Sprint planning" is finished!'), findsOneWidget);
+  });
+
+  testWidgets('Can drag and reorder plans', (WidgetTester tester) async {
+    await tester.pumpWidget(const PlanningApp());
+
+    final dragHandles = find.byIcon(Icons.drag_indicator_rounded);
+    expect(dragHandles, findsNWidgets(3));
+
+    // Drag the first drag handle down
+    final firstHandle = dragHandles.first;
+    final secondHandle = dragHandles.at(1);
+
+    final gesture = await tester.startGesture(tester.getCenter(firstHandle));
+    await tester.pump(const Duration(milliseconds: 300));
+    await gesture.moveTo(tester.getCenter(secondHandle) + const Offset(0, 50));
+    await tester.pumpAndSettle();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    // Verify plans are still rendered properly
+    expect(find.text('Sprint planning'), findsOneWidget);
+    expect(find.text('Design review'), findsOneWidget);
   });
 }

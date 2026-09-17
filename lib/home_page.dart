@@ -1,17 +1,58 @@
 import 'package:flutter/material.dart';
 
+class TaskItem {
+  final String title;
+  final bool isCompleted;
+
+  const TaskItem({
+    required this.title,
+    this.isCompleted = false,
+  });
+
+  TaskItem copyWith({String? title, bool? isCompleted}) {
+    return TaskItem(
+      title: title ?? this.title,
+      isCompleted: isCompleted ?? this.isCompleted,
+    );
+  }
+}
+
 class Plan {
   final String id;
   final String title;
   final String time;
   final IconData icon;
+  final List<TaskItem> tasksNeeded;
 
   const Plan({
     required this.id,
     required this.title,
     required this.time,
     required this.icon,
+    this.tasksNeeded = const [],
   });
+
+  bool get isFinished =>
+      tasksNeeded.isNotEmpty && tasksNeeded.every((task) => task.isCompleted);
+
+  int get completedTasksCount =>
+      tasksNeeded.where((task) => task.isCompleted).length;
+
+  Plan copyWith({
+    String? id,
+    String? title,
+    String? time,
+    IconData? icon,
+    List<TaskItem>? tasksNeeded,
+  }) {
+    return Plan(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      time: time ?? this.time,
+      icon: icon ?? this.icon,
+      tasksNeeded: tasksNeeded ?? this.tasksNeeded,
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -28,20 +69,41 @@ class _HomePageState extends State<HomePage> {
       title: 'Sprint planning',
       time: 'Today · 2:00 PM',
       icon: Icons.flag_rounded,
+      tasksNeeded: [
+        TaskItem(title: 'Roadmap deck'),
+        TaskItem(title: 'Sprint backlog'),
+        TaskItem(title: 'Team capacity sheet'),
+      ],
     ),
     const Plan(
       id: '2',
       title: 'Design review',
       time: 'Tomorrow · 10:30 AM',
       icon: Icons.brush_rounded,
+      tasksNeeded: [
+        TaskItem(title: 'Figma prototypes'),
+        TaskItem(title: 'User feedback notes'),
+      ],
     ),
     const Plan(
       id: '3',
       title: 'Weekly standup',
       time: 'Friday · 9:00 AM',
       icon: Icons.forum_rounded,
+      tasksNeeded: [
+        TaskItem(title: 'Status updates'),
+        TaskItem(title: 'Blocker list'),
+      ],
     ),
   ];
+
+  int get _totalPendingTasks {
+    return _plans.fold<int>(
+      0,
+      (sum, plan) =>
+          sum + plan.tasksNeeded.where((task) => !task.isCompleted).length,
+    );
+  }
 
   void _addPlan(Plan plan) {
     setState(() {
@@ -80,6 +142,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _reorderPlans(int oldIndex, int newIndex) {
+    setState(() {
+      final item = _plans.removeAt(oldIndex);
+      _plans.insert(newIndex, item);
+    });
+  }
+
+  void _toggleTask(Plan plan, int taskIndex) {
+    final planIndex = _plans.indexOf(plan);
+    if (planIndex == -1) return;
+
+    final currentTasks = List<TaskItem>.from(_plans[planIndex].tasksNeeded);
+    final currentTask = currentTasks[taskIndex];
+    currentTasks[taskIndex] =
+        currentTask.copyWith(isCompleted: !currentTask.isCompleted);
+
+    final updatedPlan = _plans[planIndex].copyWith(tasksNeeded: currentTasks);
+    final wasFinished = _plans[planIndex].isFinished;
+
+    setState(() {
+      _plans[planIndex] = updatedPlan;
+    });
+
+    if (!wasFinished && updatedPlan.isFinished) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🎉 Plan "${updatedPlan.title}" is finished!'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   void _showAddPlanDialog() {
     showDialog<void>(
       context: context,
@@ -91,6 +187,9 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final now = DateTime.now();
+    final mediaQuery = MediaQuery.sizeOf(context);
+    final isCompact = mediaQuery.width < 600;
+    final horizontalPadding = isCompact ? 16.0 : 24.0;
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -103,62 +202,122 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 80),
-              children: [
-                _Header(now: now),
-                const SizedBox(height: 28),
-                Text(
-                  _greeting(now),
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1C2B24),
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    16,
+                    horizontalPadding,
+                    0,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'A shared space to keep the team aligned.',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFF5C6B64),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                _GlanceRow(planCount: _plans.length),
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Coming up',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1C2B24),
-                      ),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _Header(now: now),
+                        const SizedBox(height: 24),
+                        Text(
+                          _greeting(now),
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1C2B24),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'A shared space to keep the team aligned.',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: const Color(0xFF5C6B64),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        _GlanceRow(
+                          planCount: _plans.length,
+                          taskCount: _totalPendingTasks,
+                        ),
+                        const SizedBox(height: 28),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Coming up',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF1C2B24),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: _showAddPlanDialog,
+                              icon:
+                                  const Icon(Icons.add_circle_outline_rounded),
+                              color: theme.colorScheme.primary,
+                              tooltip: 'Add plan',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                     ),
-                    IconButton(
-                      onPressed: _showAddPlanDialog,
-                      icon: const Icon(Icons.add_circle_outline_rounded),
-                      color: theme.colorScheme.primary,
-                      tooltip: 'Add plan',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _UpcomingList(
-                  plans: _plans,
-                  onRemove: _removePlan,
-                ),
-                const SizedBox(height: 32),
-                Text(
-                  'Team',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1C2B24),
                   ),
                 ),
-                const SizedBox(height: 12),
-                const _TeamRow(),
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  sliver: _plans.isEmpty
+                      ? const SliverToBoxAdapter(child: _EmptyPlansCard())
+                      : SliverReorderableList(
+                          itemCount: _plans.length,
+                          onReorderItem: _reorderPlans,
+                          proxyDecorator: (child, index, animation) {
+                            return Material(
+                              elevation: 6,
+                              color: Colors.transparent,
+                              shadowColor: Colors.black26,
+                              borderRadius: BorderRadius.circular(16),
+                              child: child,
+                            );
+                          },
+                          itemBuilder: (context, index) {
+                            final plan = _plans[index];
+                            return Padding(
+                              key: Key(plan.id),
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _UpcomingTile(
+                                plan: plan,
+                                index: index,
+                                onRemove: () => _removePlan(plan),
+                                onToggleTask: (taskIndex) =>
+                                    _toggleTask(plan, taskIndex),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    28,
+                    horizontalPadding,
+                    80,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Team',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1C2B24),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const _TeamRow(),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -234,42 +393,136 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _GlanceRow extends StatelessWidget {
-  const _GlanceRow({required this.planCount});
+class _EmptyPlansCard extends StatelessWidget {
+  const _EmptyPlansCard();
 
-  final int planCount;
+  static const _emptyShadow = [
+    BoxShadow(
+      color: Color(0x0F000000),
+      blurRadius: 10,
+      offset: Offset(0, 3),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _GlanceCard(
-            label: 'Plans',
-            value: '$planCount',
-            hint: 'active',
-            icon: Icons.check_circle_outline_rounded,
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: _emptyShadow,
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.event_available_rounded,
+            size: 40,
+            color: const Color(0xFF5C6B64).withValues(alpha: 0.5),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _GlanceCard(
-            label: 'This week',
-            value: '${planCount + 5}',
-            hint: 'items',
-            icon: Icons.view_week_rounded,
+          const SizedBox(height: 8),
+          Text(
+            'No upcoming plans',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1C2B24),
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: _GlanceCard(
-            label: 'Team',
-            value: '4',
-            hint: 'people',
-            icon: Icons.groups_rounded,
+          const SizedBox(height: 4),
+          Text(
+            'Tap "+ Add Plan" to add your first plan.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF5C6B64),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GlanceRow extends StatelessWidget {
+  const _GlanceRow({
+    required this.planCount,
+    required this.taskCount,
+  });
+
+  final int planCount;
+  final int taskCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 480) {
+          return Column(
+            children: [
+              _GlanceCard(
+                label: 'Plans',
+                value: '$planCount',
+                hint: 'active',
+                icon: Icons.check_circle_outline_rounded,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _GlanceCard(
+                      label: 'Tasks',
+                      value: '$taskCount',
+                      hint: 'pending',
+                      icon: Icons.view_week_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: _GlanceCard(
+                      label: 'Team',
+                      value: '4',
+                      hint: 'people',
+                      icon: Icons.groups_rounded,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              child: _GlanceCard(
+                label: 'Plans',
+                value: '$planCount',
+                hint: 'active',
+                icon: Icons.check_circle_outline_rounded,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _GlanceCard(
+                label: 'Tasks',
+                value: '$taskCount',
+                hint: 'pending',
+                icon: Icons.view_week_rounded,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: _GlanceCard(
+                label: 'Team',
+                value: '4',
+                hint: 'people',
+                icon: Icons.groups_rounded,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -287,6 +540,14 @@ class _GlanceCard extends StatelessWidget {
   final String hint;
   final IconData icon;
 
+  static const _cardShadow = [
+    BoxShadow(
+      color: Color(0x14000000),
+      blurRadius: 12,
+      offset: Offset(0, 4),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -296,13 +557,7 @@ class _GlanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
+        boxShadow: _cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,155 +595,340 @@ class _GlanceCard extends StatelessWidget {
   }
 }
 
-class _UpcomingList extends StatelessWidget {
-  const _UpcomingList({
-    required this.plans,
+class _UpcomingTile extends StatefulWidget {
+  const _UpcomingTile({
+    required this.plan,
+    required this.index,
     required this.onRemove,
+    required this.onToggleTask,
   });
 
-  final List<Plan> plans;
-  final ValueChanged<Plan> onRemove;
+  final Plan plan;
+  final int index;
+  final VoidCallback onRemove;
+  final ValueChanged<int> onToggleTask;
+
+  @override
+  State<_UpcomingTile> createState() => _UpcomingTileState();
+}
+
+class _UpcomingTileState extends State<_UpcomingTile> {
+  bool _isButtonHovered = false;
+  bool _isExpanded = false;
+
+  static const _tileShadow = [
+    BoxShadow(
+      color: Color(0x0F000000),
+      blurRadius: 10,
+      offset: Offset(0, 3),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final plan = widget.plan;
+    final hasTasks = plan.tasksNeeded.isNotEmpty;
+    final showTasks = _isExpanded || plan.isFinished;
 
-    if (plans.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+    return RepaintBoundary(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: plan.isFinished ? const Color(0xFFF4FBF7) : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0F000000),
-              blurRadius: 10,
-              offset: Offset(0, 3),
-            ),
-          ],
+          border: Border.all(
+            color: plan.isFinished
+                ? const Color(0xFF81C784)
+                : showTasks
+                    ? theme.colorScheme.primary.withValues(alpha: 0.4)
+                    : Colors.transparent,
+            width: 1.5,
+          ),
+          boxShadow: _tileShadow,
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.event_available_rounded,
-              size: 40,
-              color: const Color(0xFF5C6B64).withValues(alpha: 0.5),
+            Row(
+              children: [
+                ReorderableDragStartListener(
+                  index: widget.index,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 10),
+                      child: Icon(
+                        Icons.drag_indicator_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: plan.isFinished
+                        ? const Color(0xFFE8F5E9)
+                        : theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    plan.isFinished ? Icons.check_circle_rounded : plan.icon,
+                    color: plan.isFinished
+                        ? const Color(0xFF2E7D32)
+                        : theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              plan.title,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: plan.isFinished
+                                    ? const Color(0xFF2E7D32)
+                                    : const Color(0xFF1C2B24),
+                                decoration: plan.isFinished
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (plan.isFinished) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2E7D32),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'Finished',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        plan.time,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF5C6B64),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasTasks && !plan.isFinished) ...[
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    onEnter: (_) => setState(() => _isButtonHovered = true),
+                    onExit: (_) => setState(() => _isButtonHovered = false),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _isExpanded = !_isExpanded),
+                      child: AnimatedScale(
+                        scale: _isButtonHovered ? 1.06 : 1.0,
+                        duration: const Duration(milliseconds: 150),
+                        curve: Curves.easeOut,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: showTasks
+                                ? theme.colorScheme.primary
+                                : _isButtonHovered
+                                    ? theme.colorScheme.primary
+                                        .withValues(alpha: 0.2)
+                                    : theme.colorScheme.primary
+                                        .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: _isButtonHovered
+                                ? [
+                                    BoxShadow(
+                                      color: theme.colorScheme.primary
+                                          .withValues(alpha: 0.25),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : const [],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.checklist_rounded,
+                                size: 14,
+                                color: showTasks
+                                    ? Colors.white
+                                    : theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${plan.completedTasksCount}/${plan.tasksNeeded.length} tasks',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: showTasks
+                                      ? Colors.white
+                                      : theme.colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              AnimatedRotation(
+                                turns: _isExpanded ? 0.5 : 0.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  size: 16,
+                                  color: showTasks
+                                      ? Colors.white
+                                      : theme.colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  color: const Color(0xFF5C6B64),
+                  tooltip: 'Remove plan',
+                  onPressed: widget.onRemove,
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'No upcoming plans',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1C2B24),
+            AnimatedCrossFade(
+              firstChild: const SizedBox.shrink(),
+              secondChild: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Tasks needed:',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1C2B24),
+                        ),
+                      ),
+                      if (plan.isFinished)
+                        const Text(
+                          'All tasks completed! 🎉',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2E7D32),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (var i = 0; i < plan.tasksNeeded.length; i++)
+                        _TaskChip(
+                          task: plan.tasksNeeded[i],
+                          onToggle: () => widget.onToggleTask(i),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Tap "+ Add Plan" to add your first plan.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF5C6B64),
-              ),
+              crossFadeState: (showTasks && hasTasks)
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 200),
             ),
           ],
         ),
-      );
-    }
-
-    return Column(
-      children: [
-        for (var i = 0; i < plans.length; i++) ...[
-          Dismissible(
-            key: Key(plans[i].id),
-            direction: DismissDirection.endToStart,
-            background: Container(
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 20),
-              decoration: BoxDecoration(
-                color: Colors.red.shade100,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.delete_rounded, color: Colors.red.shade700),
-            ),
-            onDismissed: (_) => onRemove(plans[i]),
-            child: _UpcomingTile(
-              plan: plans[i],
-              onRemove: () => onRemove(plans[i]),
-            ),
-          ),
-          if (i != plans.length - 1) const SizedBox(height: 10),
-        ],
-      ],
+      ),
     );
   }
 }
 
-class _UpcomingTile extends StatelessWidget {
-  const _UpcomingTile({
-    required this.plan,
-    required this.onRemove,
+class _TaskChip extends StatelessWidget {
+  const _TaskChip({
+    required this.task,
+    required this.onToggle,
   });
 
-  final Plan plan;
-  final VoidCallback onRemove;
+  final TaskItem task;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDone = task.isCompleted;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F000000),
-            blurRadius: 10,
-            offset: Offset(0, 3),
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isDone ? const Color(0xFFE8F5E9) : const Color(0xFFF0F4F2),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDone ? const Color(0xFF81C784) : const Color(0xFFD3E0DC),
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isDone
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 16,
+              color: isDone ? const Color(0xFF2E7D32) : const Color(0xFF5C6B64),
             ),
-            child: Icon(plan.icon, color: theme.colorScheme.primary),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plan.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1C2B24),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  plan.time,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF5C6B64),
-                  ),
-                ),
-              ],
+            const SizedBox(width: 6),
+            Text(
+              task.title,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color:
+                    isDone ? const Color(0xFF2E7D32) : const Color(0xFF1C2B24),
+                fontSize: 12,
+                fontWeight: isDone ? FontWeight.w600 : FontWeight.w400,
+                decoration: isDone ? TextDecoration.lineThrough : null,
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline_rounded),
-            color: const Color(0xFF5C6B64),
-            tooltip: 'Remove plan',
-            onPressed: onRemove,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -507,6 +947,7 @@ class _AddPlanDialogState extends State<_AddPlanDialog> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _timeController = TextEditingController(text: 'Today · 3:00 PM');
+  final _tasksController = TextEditingController();
   IconData _selectedIcon = Icons.flag_rounded;
 
   static const _availableIcons = [
@@ -521,16 +962,28 @@ class _AddPlanDialogState extends State<_AddPlanDialog> {
   void dispose() {
     _titleController.dispose();
     _timeController.dispose();
+    _tasksController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
+      final tasksRaw = _tasksController.text.trim();
+      final tasksNeeded = tasksRaw.isEmpty
+          ? <TaskItem>[]
+          : tasksRaw
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .map((t) => TaskItem(title: t))
+              .toList();
+
       final plan = Plan(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: _titleController.text.trim(),
         time: _timeController.text.trim(),
         icon: _selectedIcon,
+        tasksNeeded: tasksNeeded,
       );
       widget.onAdd(plan);
       Navigator.of(context).pop();
@@ -580,6 +1033,15 @@ class _AddPlanDialogState extends State<_AddPlanDialog> {
                   }
                   return null;
                 },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _tasksController,
+                decoration: const InputDecoration(
+                  labelText: 'Tasks needed (comma-separated)',
+                  hintText: 'e.g. Prepare slides, Review PR, Update docs',
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
